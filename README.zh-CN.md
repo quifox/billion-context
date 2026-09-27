@@ -463,6 +463,16 @@ bili --host 0.0.0.0           # 所有网卡(或直接用局域网 IP)
 
 永久禁用:配置(`"autoUpdate": false`)或环境变量(`ACP_AUTO_UPDATE=0`)。
 
+### 严重缺陷公告(强制更新)
+
+独立于自动更新(#1481):即使关闭了 `autoUpdate`,代理也会按同样的 3 分钟节奏轮询一个小的伴生 npm 包(`billion-context-advisories`,由 CI 从本仓库的 [`advisories/`](advisories/) 目录发布)。每条公告指明受缺陷影响的版本范围(`affected`,semver)、应安装的确切版本(`target`,可以比当前版本**更旧**,即回滚),以及面向用户的缺陷说明(`reason`)。当本地版本落入 `affected` 范围时,bili 会走自更新的全套安全链路强制安装 `target`(跨进程锁、备份+校验+回滚;源码检出和宿主托管的安装会被拒绝并给出手动升级指引),并以警告方式呈现:
+
+- 日志中每个进程、每条公告一次性的 `[advisory] ⚠️ …`;
+- Web UI 概览页横幅,显示原因与手动升级命令;
+- `GET /__bili/status` 在 `advisory` 字段返回生效中的公告。
+
+该检查默认 fail-open:公告源不可达或格式错误只产生警告,绝不阻断模型流量。禁用方式:配置(`"advisoryCheck": false`)或环境变量(`BILI_ADVISORY_CHECK=0`);可用 `"advisoryUrl"` / `BILI_ADVISORY_URL` 指向自定义文档。
+
 ## 配置
 
 完整的配置参考 —— 配置文件位置、顶层键、providers、压缩调参、环境变量 ——

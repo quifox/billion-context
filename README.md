@@ -1032,7 +1032,8 @@ visible without digging through logs:
 - The web UI (`/__bili/`) shows a banner on the overview page: which version is
   running vs installed, and whether auto-restart is enabled.
 - `GET /__bili/status` returns `{version, diskVersion, stale,
-  autoRestartOnUpdate, inFlight}` for scripting.
+  autoRestartOnUpdate, advisory, inFlight}` for scripting (`advisory` is the
+  active critical-defect entry or `null`, see below).
 - A one-time `[update] … restart bili to activate` warning per version pair
   stays in the log.
 
@@ -1050,6 +1051,29 @@ resumes the original listener and falls back to the plain reminder.
 
 Disable permanently via config (`"autoUpdate": false`) or env
 (`ACP_AUTO_UPDATE=0`).
+
+### Critical-defect advisories (forced updates)
+
+Independent of auto-update (#1481): even with `autoUpdate` off, the proxy polls
+a small companion npm package (`billion-context-advisories`, published by CI
+from this repo's [`advisories/`](advisories/) directory) on the same 3-minute
+cadence. Each advisory names a semver range of broken versions (`affected`),
+the exact version to install (`target` — which may be *older* than the current
+one, i.e. a rollback), and a user-facing `reason`. When the local version falls
+inside `affected`, bili force-installs `target` through the self-updater's full
+safety chain (cross-process lock, backup + verify + rollback; source checkouts
+and host-managed installs are refused with manual instructions instead) and
+warns prominently:
+
+- A one-time `[advisory] ⚠️ …` log line per process per advisory id.
+- A banner on the web UI overview page showing the reason and the exact manual
+  upgrade command.
+- `GET /__bili/status` reports the active entry under `advisory`.
+
+The check is fail-open by design: an unreachable or malformed advisory source
+only produces a warning — model traffic is never blocked by it. Disable via
+config (`"advisoryCheck": false`) or env (`BILI_ADVISORY_CHECK=0`); point at a
+custom document with `"advisoryUrl"` / `BILI_ADVISORY_URL`.
 
 ## Configuration
 

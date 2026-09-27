@@ -29,6 +29,19 @@ function readConfig(): ConfigShape {
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as ConfigShape : {};
 }
 
+/** #1467: same env-wins-over-file resolution as loadOptions(), computed live
+ *  so the panel shows the state the RUNNING server actually uses. */
+function wsPassthroughState(env: NodeJS.ProcessEnv, file: ConfigShape): { enabled: boolean; source: "env" | "file" | null } {
+    if (env.BILI_WS_PASSTHROUGH !== undefined) {
+        return { enabled: env.BILI_WS_PASSTHROUGH !== "0", source: "env" };
+    }
+    const ws = file.ws;
+    if (ws && typeof ws === "object" && (ws as Record<string, unknown>).passthrough === true) {
+        return { enabled: true, source: "file" };
+    }
+    return { enabled: false, source: null };
+}
+
 /** The config file exists on disk but does not parse as JSON (hand-edited
  *  comment, trailing comma, …). Distinct from "missing": a broken file must
  *  never be silently rebuilt from {} by a PUT — that would wipe every field
@@ -87,6 +100,7 @@ export async function handleConfigGet(res: ServerResponse): Promise<void> {
         upstreamProxyMode: upstream.mode,
         compress: config.compress ?? null,
         passthrough: passthroughState(process.env),
+        wsPassthrough: wsPassthroughState(process.env, config),
         ...(parseError ? { parseError } : {}),
     }, null, 2));
 }

@@ -245,6 +245,8 @@ export function parseCompressInput(input: unknown, callId?: string) {
     }
     if (!parsed.diagnostics.ok && parsed.diagnostics.kind !== "ok") {
         loggerLog("warn", `[acp-compress-input] rejected: kind=${parsed.diagnostics.kind} invalidItems=${parsed.diagnostics.invalidItems}${parsed.diagnostics.keys ? ` keys=[${parsed.diagnostics.keys.join(",")}]` : ""}${parsed.diagnostics.length !== undefined ? ` len=${parsed.diagnostics.length}` : ""}${parsed.diagnostics.invalidReasons && parsed.diagnostics.invalidReasons.length > 0 ? ` reasons=[${parsed.diagnostics.invalidReasons.join(" | ")}]` : ""}`);
+    } else if (parsed.diagnostics.ok && (parsed.diagnostics.invalidItems > 0 || parsed.diagnostics.kind === "truncated")) {
+        loggerLog("warn", `[acp-compress-input] partial drop (#1495): kind=${parsed.diagnostics.kind} salvaged=${parsed.ranges.length} invalidItems=${parsed.diagnostics.invalidItems}${parsed.diagnostics.invalidReasons && parsed.diagnostics.invalidReasons.length > 0 ? ` reasons=[${parsed.diagnostics.invalidReasons.join(" | ")}]` : ""}`);
     }
     return { ranges: parsed.ranges, diagnostics: parsed.diagnostics };
 }

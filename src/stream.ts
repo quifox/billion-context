@@ -240,6 +240,30 @@ function postCompressTail(ctx: RewriteCtx, cleanSuccess: boolean): string {
     return `\n\n${NO_RANGES_REMAIN_TEXT}`;
 }
 
+// #1495: the kernel's lenient parser salvages complete entries from damaged
+// arguments (truncated gateway-stringified arrays, corrupted elements) and
+// reports what it dropped via diagnostics — which this path only read on TOTAL
+// failure. On partial success the receipt was a clean "[Compressed … → N
+// block(s)]" for ranges that were requested but never folded. Every non-total
+// receipt now names what was dropped so partial application stays visible and
+// re-issuable. Apply-layer per-range errors (unknown refs, …) get the same
+// treatment: previously also invisible when some other range in the batch
+// succeeded.
+function partialDropNote(parsed: ReturnType<typeof parseCompressInput>): string {
+    const d = parsed.diagnostics;
+    if (d.invalidItems === 0 && d.kind !== "truncated") return "";
+    const reasons = (d.invalidReasons ?? []).slice(0, 3).map((r) => r.length > 200 ? `${r.slice(0, 200)}…` : r).join(" | ");
+    if (d.kind === "truncated") {
+        return ` [PARTIAL: the arguments arrived damaged or truncated — only ${parsed.ranges.length} range(s) could be recovered; any requested range(s) not listed above were LOST, not compressed. Check acp_status for what is still compressible and re-issue the missing range(s).${reasons ? ` Rejected entries: ${reasons}.` : ""}]`;
+    }
+    return ` [PARTIAL: ${d.invalidItems} of your requested entries were rejected at parse and NOT compressed${reasons ? `: ${reasons}` : ""}. Re-issue those range(s) in a separate call.]`;
+}
+function applyErrorNote(r: { errors: string[] }): string {
+    if (r.errors.length === 0) return "";
+    const errs = r.errors.slice(0, 3).map((e) => e.length > 200 ? `${e.slice(0, 200)}…` : e).join(" | ");
+    return ` Errors: ${errs}`;
+}
+
 export function applyRanges(parsed: ReturnType<typeof parseCompressInput>, ctx: RewriteCtx): string {
     const { ranges, diagnostics } = parsed;
     if (ranges.length === 0) {
@@ -362,7 +386,7 @@ export function applyRanges(parsed: ReturnType<typeof parseCompressInput>, ctx: 
             const noViableAnywhere = minChars > 0 && totalChars < minChars
                 ? ` This conversation holds only ${totalChars} char(s) — below the ${minChars}-char minimum, so NO range can succeed yet; do not retry compress or call acp_status/search_context about it — continue answering the user's task.`
                 : "";
-            return `[Compression FAILED: ${errs}${revNote}${currentRefsSnapshot(ctx)}${recordCompressFailure(ctx.session, normalizedSpecKey(ranges))}${spanHint}${noViableAnywhere}]`;
+            return `[Compression FAILED: ${errs}${revNote}${currentRefsSnapshot(ctx)}${recordCompressFailure(ctx.session, normalizedSpecKey(ranges))}${spanHint}${noViableAnywhere}${partialDropNote(parsed)}]`;
         }
         clearCompressFailures(ctx.session);
 
@@ -393,7 +417,7 @@ export function applyRanges(parsed: ReturnType<typeof parseCompressInput>, ctx: 
         );
 
         const warn = r.warnings.length > 0 ? ` ${r.warnings.join("; ")}` : "";
-        let msg = `[Compressed ${detail} → ${r.blocksCreated} block(s), ~${r.tokensCompressed} tokens saved.${warn}]`;
+        let msg = `[Compressed ${detail} → ${r.blocksCreated} block(s), ~${r.tokensCompressed} tokens saved.${warn}${applyErrorNote(r)}${partialDropNote(parsed)}]`;
         // #1294 P1: append a fingerprint line per created/updated block —
         // kernel refolds update an existing block's summary in place (same id),
         // so "updated" means any pre-existing block whose summary changed.
